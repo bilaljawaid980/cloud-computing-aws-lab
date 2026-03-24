@@ -25,34 +25,57 @@ jobs:
       - name: Deploy VPC Stack
         run: |
           aws cloudformation deploy \
-          --stack-name vpc-stack \
-          --template-file vpc-stack.yml \
-          --region us-east-1
+            --stack-name vpc-stack \
+            --template-file vpc-stack.yml \
+            --region us-east-1
+
+      - name: Wait for VPC Stack
+        run: |
+          aws cloudformation wait stack-create-complete \
+            --stack-name vpc-stack \
+            --region us-east-1 2>/dev/null || \
+          aws cloudformation wait stack-update-complete \
+            --stack-name vpc-stack \
+            --region us-east-1 2>/dev/null || true
 
       - name: Verify EC2 Key Pair
         run: |
           aws ec2 describe-key-pairs \
-          --key-names "${{ github.event.inputs.keypair }}" \
-          --region us-east-1
+            --key-names "${{ github.event.inputs.keypair }}" \
+            --region us-east-1
 
-      - name: Reset ALB Stack If Rollback Complete
+      - name: Reset ALB Stack If In Failed State
         run: |
           status=$(aws cloudformation describe-stacks \
             --stack-name alb-stack \
             --region us-east-1 \
             --query 'Stacks[0].StackStatus' \
-            --output text 2>/dev/null || true)
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
 
-          if [ "$status" = "ROLLBACK_COMPLETE" ]; then
-            echo "alb-stack is ROLLBACK_COMPLETE. Deleting before redeploy..."
-            aws cloudformation delete-stack --stack-name alb-stack --region us-east-1
-            aws cloudformation wait stack-delete-complete --stack-name alb-stack --region us-east-1
+          echo "Current alb-stack status: $status"
+
+          if [[ "$status" == "ROLLBACK_COMPLETE" || "$status" == "DELETE_FAILED" || "$status" == "CREATE_FAILED" ]]; then
+            echo "Stack is in $status state. Deleting..."
+            aws cloudformation delete-stack \
+              --stack-name alb-stack \
+              --region us-east-1
+            echo "Waiting for delete to complete..."
+            aws cloudformation wait stack-delete-complete \
+              --stack-name alb-stack \
+              --region us-east-1
+            echo "Delete complete."
+            # Extra verification — make sure it's truly gone
+            sleep 5
+            aws cloudformation describe-stacks \
+              --stack-name alb-stack \
+              --region us-east-1 2>&1 && echo "WARNING: Stack still exists!" || echo "Confirmed: stack deleted."
           fi
 
       - name: Deploy ALB Stack
         run: |
           aws cloudformation deploy \
-          --stack-name alb-stack \
-          --template-file alb-stack.yml \
-          --parameter-overrides KeyName=${{ github.event.inputs.keypair }} \
-          --region us-east-1
+            --stack-name alb-stack \
+            --template-file alb-stack.yml \
+            --parameter-overrides KeyName=${{ github.event.inputs.keypair }} \
+            --capabilities CAPABILITY_IAM \
+            --region us-east-1
