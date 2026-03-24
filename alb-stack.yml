@@ -4,6 +4,7 @@ Description: Application Load Balancer Stack
 Parameters:
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 Key Pair name
 
 Resources:
 
@@ -21,7 +22,7 @@ Resources:
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow traffic from ALB to EC2
+      GroupDescription: Allow traffic from ALB and SSH to EC2
       VpcId: !ImportValue MyVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -38,7 +39,7 @@ Resources:
     Properties:
       InstanceType: t3.micro
       KeyName: !Ref KeyName
-      ImageId: ami-0c02fb55956c7d316   # FIXED (no SSM)
+      ImageId: ami-0c02fb55956c7d316
       SubnetId: !ImportValue PublicSubnet1
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
@@ -70,12 +71,25 @@ Resources:
       VpcId: !ImportValue MyVPC
       TargetType: instance
       HealthCheckPath: /
-      Targets:
-        - Id: !Ref WebServer
-          Port: 80
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200
+
+  TargetAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    DependsOn:
+      - WebServer
+      - ALBTargetGroup
+    Properties:
+      TargetGroupArn: !Ref ALBTargetGroup
+      TargetId: !Ref WebServer
+      Port: 80
 
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+      - ApplicationLoadBalancer
+      - ALBTargetGroup
     Properties:
       LoadBalancerArn: !Ref ApplicationLoadBalancer
       Port: 80
@@ -86,4 +100,5 @@ Resources:
 
 Outputs:
   ALBDNSName:
+    Description: DNS name of the ALB
     Value: !GetAtt ApplicationLoadBalancer.DNSName
