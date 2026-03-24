@@ -29,6 +29,26 @@ jobs:
           --template-file vpc-stack.yml \
           --region us-east-1
 
+      - name: Verify EC2 Key Pair
+        run: |
+          aws ec2 describe-key-pairs \
+          --key-names "${{ github.event.inputs.keypair }}" \
+          --region us-east-1
+
+      - name: Reset ALB Stack If Rollback Complete
+        run: |
+          status=$(aws cloudformation describe-stacks \
+            --stack-name alb-stack \
+            --region us-east-1 \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || true)
+
+          if [ "$status" = "ROLLBACK_COMPLETE" ]; then
+            echo "alb-stack is ROLLBACK_COMPLETE. Deleting before redeploy..."
+            aws cloudformation delete-stack --stack-name alb-stack --region us-east-1
+            aws cloudformation wait stack-delete-complete --stack-name alb-stack --region us-east-1
+          fi
+
       - name: Deploy ALB Stack
         run: |
           aws cloudformation deploy \
