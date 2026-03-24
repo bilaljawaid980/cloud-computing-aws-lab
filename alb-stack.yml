@@ -70,6 +70,9 @@ Resources:
       VpcId: !ImportValue MyVPC
       TargetType: instance
       HealthCheckPath: /
+      Targets:
+        - Id: !Ref WebServer
+          Port: 80
 
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -80,13 +83,6 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref ALBTargetGroup
-
-  TargetAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref ALBTargetGroup
-      TargetId: !Ref WebServer
-      Port: 80
 
 Outputs:
   ALBDNSName:

@@ -6,7 +6,6 @@ on:
       keypair:
         description: "EC2 Key Pair Name"
         required: true
-        default: "cf-kp"
 
 jobs:
   deploy:
